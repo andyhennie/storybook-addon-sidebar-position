@@ -1,0 +1,81 @@
+{
+  "name": "storybook-addon-sidebar-position",
+  "version": "0.1.0",
+  "description": "Storybook addon to toggle sidebar position between left and right",
+  "author": "Andreas",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./manager": {
+      "types": "./dist/manager.d.ts",
+      "import": "./dist/manager.js",
+      "require": "./dist/manager.cjs"
+    },
+    "./preset": {
+      "types": "./dist/preset.d.ts",
+      "import": "./dist/preset.js",
+      "require": "./dist/preset.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "storybook-addon",
+    "storybook",
+    "sidebar",
+    "layout",
+    "ui",
+    "toolbar"
+  ],
+  "storybook": {
+    "displayName": "Sidebar Position",
+    "supportedFrameworks": [
+      "react",
+      "vue",
+      "angular",
+      "web-components",
+      "ember",
+      "html",
+      "svelte",
+      "preact",
+      "react-native"
+    ],
+    "icon": "https://raw.githubusercontent.com/storybookjs/storybook/main/code/addons/toolbars/icon.svg"
+  },
+  "peerDependencies": {
+    "storybook": "^8.0.0 || ^9.0.0 || ^10.0.0"
+  },
+  "devDependencies": {
+    "@storybook/icons": "^1.4.0",
+    "@types/node": "^25.0.3",
+    "@types/react": "^18.3.18",
+    "react": "^18.3.1",
+    "storybook": "^10.1.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andyhennie/storybook-addon-sidebar-position"
+  },
+  "bugs": {
+    "url": "https://github.com/andyhennie/storybook-addon-sidebar-position/issues"
+  },
+  "homepage": "https://github.com/andyhennie/storybook-addon-sidebar-position#readme"
+}
