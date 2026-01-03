@@ -3,26 +3,58 @@ import { addons, types, useAddonState } from 'storybook/manager-api';
 import { IconButton } from 'storybook/internal/components';
 import { SidebarAltIcon } from '@storybook/icons';
 
-import { ADDON_ID, TOOL_ID, STYLE_ID } from './constants';
+import { ADDON_ID, TOOL_ID, STYLE_ID, STORAGE_KEY } from './constants';
+
+/**
+ * Read sidebar position preference from localStorage.
+ * Returns true if sidebar should be on the right, false otherwise.
+ */
+function getStoredPosition(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'right';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Save sidebar position preference to localStorage.
+ */
+function setStoredPosition(isRight: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, isRight ? 'right' : 'left');
+  } catch {
+    // Ignore localStorage errors (e.g., private browsing)
+  }
+}
 
 /**
  * Sidebar position toggle tool.
  * Moves the Storybook sidebar between left (default) and right positions.
  *
- * Uses local state for reactivity and syncs to addon state for persistence.
+ * State is persisted to localStorage for permanence across browser sessions.
+ * Uses local useState for immediate reactivity, synced to useAddonState for
+ * Storybook's internal state management.
  */
 function SidebarPositionTool() {
-  const [addonState, setAddonState] = useAddonState<boolean>(ADDON_ID, false);
-  const [isRight, setIsRight] = React.useState(addonState);
+  // Initialize from localStorage
+  const storedValue = React.useMemo(() => getStoredPosition(), []);
 
-  // Sync local state to addon state
+  // Local state is the source of truth for immediate reactivity
+  const [isRight, setIsRight] = React.useState(storedValue);
+
+  // Sync to Storybook's addon state (for internal state management)
+  const [, setAddonState] = useAddonState<boolean>(ADDON_ID, storedValue);
+
+  // Handle toggle - update local state, addon state, and localStorage
   const handleToggle = React.useCallback(() => {
     const newValue = !isRight;
     setIsRight(newValue);
     setAddonState(newValue);
+    setStoredPosition(newValue);
   }, [isRight, setAddonState]);
 
-  // Set up the polling loop for sidebar position
+  // Set up the polling loop for sidebar position CSS injection
   React.useEffect(() => {
     // Remove style when switching to left
     if (!isRight) {

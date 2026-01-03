@@ -40,12 +40,13 @@ Once installed, you'll see a new sidebar icon in the Storybook toolbar. Click it
 The addon automatically handles:
 - Dynamic sidebar width changes
 - Fullscreen mode (hides the override when sidebar is hidden)
-- State persistence across story navigation
+- State persistence across story navigation and page refreshes (via localStorage)
 
 ## Features
 
 - Toggle sidebar position with a single click
 - Visual indicator when sidebar is on the right (icon flips)
+- Persists preference to localStorage (survives browser refresh)
 - Works with all Storybook view modes (story, docs)
 - Compatible with Storybook 8.x, 9.x, and 10.x
 - Framework agnostic (React, Vue, Angular, etc.)
