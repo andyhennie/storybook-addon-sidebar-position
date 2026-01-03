@@ -37,22 +37,34 @@ const SIDEBAR_RIGHT_CSS = `
 let mirrorCleanup: (() => void) | null = null;
 
 /**
- * Mirror mouse X coordinates during drag so that:
- * - Dragging LEFT (toward content) → Storybook sees drag RIGHT → sidebar grows
- * - Dragging RIGHT (toward edge) → Storybook sees drag LEFT → sidebar shrinks
+ * Get current sidebar width from grid template columns.
+ */
+function getSidebarWidth(): number {
+  const root = document.querySelector('#root > div') as HTMLElement | null;
+  if (!root) return 300;
+  const cols = getComputedStyle(root).gridTemplateColumns;
+  return Number.parseInt(cols.split(' ')[0], 10) || 300;
+}
+
+/**
+ * Mirror mouse coordinates for right sidebar resize.
  *
- * This lets Storybook's native resize logic handle all the complexity
- * (column redistribution, persistence, constraints) correctly.
+ * Storybook's native logic: sidebarWidth = mouseX
+ * For right sidebar, we want: drag LEFT = grow, drag RIGHT = shrink
+ *
+ * Translation:
+ * - startWidth = current sidebar width at drag start
+ * - delta = currentX - startX (positive = dragged right)
+ * - newWidth = startWidth - delta (drag right = smaller)
+ * - mirroredX = newWidth (what Storybook should see)
  */
 function setupEventMirroring(): void {
   cleanupEventMirroring();
 
   let isDragging = false;
   let dragStartX = 0;
+  let startWidth = 0;
 
-  /**
-   * Check if target is Storybook's native resize handle
-   */
   const isResizeHandle = (target: EventTarget | null): boolean => {
     if (!(target instanceof Element)) return false;
     const handle = document.querySelector(
@@ -61,14 +73,15 @@ function setupEventMirroring(): void {
     return handle !== null && (target === handle || handle.contains(target));
   };
 
-  /**
-   * Create a mirrored mouse event with X coordinate reflected around dragStartX
-   */
   const createMirroredEvent = (
     original: MouseEvent,
     type: string,
   ): MouseEvent => {
-    const mirroredX = 2 * dragStartX - original.clientX;
+    // delta > 0 means dragged right (toward window edge) = shrink
+    // delta < 0 means dragged left (toward content) = grow
+    const delta = original.clientX - dragStartX;
+    const mirroredX = startWidth - delta;
+
     return new MouseEvent(type, {
       bubbles: true,
       cancelable: true,
@@ -91,6 +104,7 @@ function setupEventMirroring(): void {
     if (!isResizeHandle(e.target)) return;
     isDragging = true;
     dragStartX = e.clientX;
+    startWidth = getSidebarWidth();
   };
 
   const onMouseMove = (e: MouseEvent): void => {
@@ -108,7 +122,6 @@ function setupEventMirroring(): void {
     isDragging = false;
   };
 
-  // Capture phase to intercept before Storybook's handlers
   window.addEventListener('mousedown', onMouseDown, true);
   window.addEventListener('mousemove', onMouseMove, true);
   window.addEventListener('mouseup', onMouseUp, true);
