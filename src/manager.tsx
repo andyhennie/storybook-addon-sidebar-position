@@ -5,21 +5,13 @@ import { SidebarAltIcon } from '@storybook/icons';
 
 import { ADDON_ID, TOOL_ID, STYLE_ID, STORAGE_KEY } from './constants';
 
-const CUSTOM_HANDLE_ID = 'sidebar-position-resize-handle';
-const CUSTOM_HANDLE_STYLE_ID = `${CUSTOM_HANDLE_ID}-style`;
-
-// Match Storybook's vanilla resize behavior constants
-const SNAP_THRESHOLD_PX = 30;
-const SIDEBAR_MIN_WIDTH_PX = 240;
-const SIDEBAR_MAX_WIDTH_RATIO = 0.5; // Max 50% of window width
-
 // =============================================================================
 // MODULE-SCOPE CSS INJECTION (runs immediately when file loads, before React)
 // =============================================================================
 
 /**
  * CSS that moves sidebar to the right using RTL direction trick.
- * Hides Storybook's native resize handle (we provide our own with correct behavior).
+ * Moves native resize handle to the left edge of sidebar.
  */
 const SIDEBAR_RIGHT_CSS = `
   @media (min-width: 600px) {
@@ -30,142 +22,107 @@ const SIDEBAR_RIGHT_CSS = `
     #root > div[class] > * {
       direction: ltr;
     }
-    /* Hide Storybook's native resize handle - we use our own */
+    /* Move native resize handle to left edge of sidebar */
     #root > div[class] > *:first-child > *:first-child {
-      display: none !important;
+      right: auto !important;
+      left: -6px !important;
     }
   }
 `;
 
-/**
- * CSS for our custom resize handle
- */
-const CUSTOM_HANDLE_CSS = `
-  #${CUSTOM_HANDLE_ID} {
-    position: absolute;
-    top: 0;
-    left: -5px;
-    width: 10px;
-    height: 100%;
-    cursor: col-resize;
-    z-index: 9999;
-    background: transparent;
-  }
-  #${CUSTOM_HANDLE_ID}:hover,
-  #${CUSTOM_HANDLE_ID}.dragging {
-    background: rgba(100, 100, 255, 0.15);
-  }
-`;
+// =============================================================================
+// EVENT MIRRORING - Let Storybook handle resize, just mirror mouse coordinates
+// =============================================================================
 
-// Store cleanup function and state
-let resizeCleanup: (() => void) | null = null;
+let mirrorCleanup: (() => void) | null = null;
 
 /**
- * Set up custom resize handler for right sidebar.
- * Uses correct drag direction: LEFT = larger, RIGHT = smaller.
+ * Mirror mouse X coordinates during drag so that:
+ * - Dragging LEFT (toward content) → Storybook sees drag RIGHT → sidebar grows
+ * - Dragging RIGHT (toward edge) → Storybook sees drag LEFT → sidebar shrinks
+ *
+ * This lets Storybook's native resize logic handle all the complexity
+ * (column redistribution, persistence, constraints) correctly.
  */
-function setupCustomResizeHandler(): void {
-  // Clean up any existing handler first
-  cleanupCustomResizeHandler();
+function setupEventMirroring(): void {
+  cleanupEventMirroring();
 
-  const root = document.querySelector('#root > div') as HTMLElement | null;
-  const sidebar = root?.children[0] as HTMLElement | null;
-
-  if (!root || !sidebar) {
-    // DOM not ready, retry
-    setTimeout(setupCustomResizeHandler, 100);
-    return;
-  }
-
-  // Add custom handle CSS
-  let handleStyleEl = document.getElementById(CUSTOM_HANDLE_STYLE_ID);
-  if (!handleStyleEl) {
-    handleStyleEl = document.createElement('style');
-    handleStyleEl.id = CUSTOM_HANDLE_STYLE_ID;
-    handleStyleEl.textContent = CUSTOM_HANDLE_CSS;
-    document.head.appendChild(handleStyleEl);
-  }
-
-  // Create custom resize handle
-  let handle = document.getElementById(CUSTOM_HANDLE_ID);
-  if (handle) {
-    handle.remove();
-  }
-  handle = document.createElement('div');
-  handle.id = CUSTOM_HANDLE_ID;
-  sidebar.appendChild(handle);
-
-  // Resize state
   let isDragging = false;
+  let dragStartX = 0;
 
-  const onMouseDown = (e: MouseEvent) => {
+  /**
+   * Check if target is Storybook's native resize handle
+   */
+  const isResizeHandle = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    const handle = document.querySelector(
+      '#root > div[class] > *:first-child > *:first-child',
+    );
+    return handle !== null && (target === handle || handle.contains(target));
+  };
+
+  /**
+   * Create a mirrored mouse event with X coordinate reflected around dragStartX
+   */
+  const createMirroredEvent = (
+    original: MouseEvent,
+    type: string,
+  ): MouseEvent => {
+    const mirroredX = 2 * dragStartX - original.clientX;
+    return new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: mirroredX,
+      clientY: original.clientY,
+      screenX: original.screenX,
+      screenY: original.screenY,
+      ctrlKey: original.ctrlKey,
+      shiftKey: original.shiftKey,
+      altKey: original.altKey,
+      metaKey: original.metaKey,
+      button: original.button,
+      buttons: original.buttons,
+    });
+  };
+
+  const onMouseDown = (e: MouseEvent): void => {
+    if (!e.isTrusted) return;
+    if (!isResizeHandle(e.target)) return;
     isDragging = true;
-    handle?.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+    dragStartX = e.clientX;
+  };
+
+  const onMouseMove = (e: MouseEvent): void => {
+    if (!isDragging || !e.isTrusted) return;
+    e.stopImmediatePropagation();
     e.preventDefault();
-    e.stopImmediatePropagation(); // Prevent Storybook's handler from firing
+    window.dispatchEvent(createMirroredEvent(e, 'mousemove'));
   };
 
-  const onMouseMove = (e: MouseEvent) => {
-    if (!isDragging) return;
-
-    // For right sidebar: width = distance from mouse to right edge of window
-    // This mirrors Storybook's vanilla behavior (width = e.clientX for left sidebar)
-    const maxWidth = window.innerWidth * SIDEBAR_MAX_WIDTH_RATIO;
-    let newWidth = window.innerWidth - e.clientX;
-
-    // Snap to close when very close to right edge (mirror of Storybook's left-edge snap)
-    if (newWidth <= SNAP_THRESHOLD_PX) {
-      newWidth = 0;
-    } else if (newWidth < SIDEBAR_MIN_WIDTH_PX) {
-      // Apply stiffness near minimum (same feel as Storybook)
-      newWidth = SIDEBAR_MIN_WIDTH_PX;
-    } else if (newWidth > maxWidth) {
-      newWidth = maxWidth;
-    }
-
-    // Update grid columns
-    const currentColumns = getComputedStyle(root).gridTemplateColumns;
-    const parts = currentColumns.split(' ');
-    if (parts.length >= 1) {
-      parts[0] = `${newWidth}px`;
-      root.style.gridTemplateColumns = parts.join(' ');
-    }
-  };
-
-  const onMouseUp = () => {
-    if (!isDragging) return;
+  const onMouseUp = (e: MouseEvent): void => {
+    if (!isDragging || !e.isTrusted) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    window.dispatchEvent(createMirroredEvent(e, 'mouseup'));
     isDragging = false;
-    handle?.classList.remove('dragging');
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
   };
 
-  // Use capture phase to ensure we get events before Storybook
-  handle.addEventListener('mousedown', onMouseDown, true);
+  // Capture phase to intercept before Storybook's handlers
+  window.addEventListener('mousedown', onMouseDown, true);
   window.addEventListener('mousemove', onMouseMove, true);
   window.addEventListener('mouseup', onMouseUp, true);
 
-  // Store cleanup function
-  resizeCleanup = () => {
-    handle?.removeEventListener('mousedown', onMouseDown, true);
+  mirrorCleanup = () => {
+    window.removeEventListener('mousedown', onMouseDown, true);
     window.removeEventListener('mousemove', onMouseMove, true);
     window.removeEventListener('mouseup', onMouseUp, true);
-    document.getElementById(CUSTOM_HANDLE_ID)?.remove();
-    document.getElementById(CUSTOM_HANDLE_STYLE_ID)?.remove();
-    root.style.gridTemplateColumns = '';
   };
 }
 
-/**
- * Clean up custom resize handler
- */
-function cleanupCustomResizeHandler(): void {
-  if (resizeCleanup) {
-    resizeCleanup();
-    resizeCleanup = null;
-  }
+function cleanupEventMirroring(): void {
+  mirrorCleanup?.();
+  mirrorCleanup = null;
 }
 
 /**
@@ -178,10 +135,8 @@ function injectSidebarRightStyle(): void {
   style.textContent = SIDEBAR_RIGHT_CSS;
   document.head.appendChild(style);
 
-  // Set up custom resize handler
-  requestAnimationFrame(() => {
-    setupCustomResizeHandler();
-  });
+  // Set up event mirroring for resize handle
+  setupEventMirroring();
 }
 
 /**
@@ -189,7 +144,7 @@ function injectSidebarRightStyle(): void {
  */
 function removeSidebarRightStyle(): void {
   document.getElementById(STYLE_ID)?.remove();
-  cleanupCustomResizeHandler();
+  cleanupEventMirroring();
 }
 
 /**
@@ -233,12 +188,12 @@ function SidebarPositionTool() {
   const [isRight, setIsRight] = React.useState(shouldSidebarBeRight);
   const [, setAddonState] = useAddonState<boolean>(ADDON_ID, isRight);
 
-  // Ensure resize handler is set up when component mounts
+  // Ensure event mirroring is set up when component mounts
   React.useEffect(() => {
     if (isRight) {
       // Re-setup in case DOM changed (hot reload, navigation, etc.)
       const timer = setTimeout(() => {
-        setupCustomResizeHandler();
+        setupEventMirroring();
       }, 100);
       return () => clearTimeout(timer);
     }
