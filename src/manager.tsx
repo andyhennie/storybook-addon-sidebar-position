@@ -16,11 +16,17 @@ import { ADDON_ID, TOOL_ID, STYLE_ID, STORAGE_KEY } from './constants';
  */
 const SIDEBAR_RIGHT_CSS = `
   @media (min-width: 600px) {
+    /* Reverse grid column visual order */
     #root > div[class] {
       direction: rtl;
     }
     #root > div[class] > * {
       direction: ltr;
+    }
+    /* Move resize handle to inner edge (between content and sidebar) */
+    #root > div[class] > *:first-child > *:first-child {
+      right: auto !important;
+      left: -7px !important;
     }
   }
 `;
