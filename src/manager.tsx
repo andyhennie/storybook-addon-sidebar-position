@@ -5,9 +5,13 @@ import { SidebarAltIcon } from '@storybook/icons';
 
 import { ADDON_ID, TOOL_ID, STYLE_ID, STORAGE_KEY } from './constants';
 
-const CUSTOM_HANDLE_ID = 'storybook-sidebar-resize-handle';
+const CUSTOM_HANDLE_ID = 'sidebar-position-resize-handle';
 const CUSTOM_HANDLE_STYLE_ID = `${CUSTOM_HANDLE_ID}-style`;
-const WIDTH_STORAGE_KEY = 'storybook-sidebar-width';
+
+// Match Storybook's vanilla resize behavior constants
+const SNAP_THRESHOLD_PX = 30;
+const SIDEBAR_MIN_WIDTH_PX = 240;
+const SIDEBAR_MAX_WIDTH_RATIO = 0.5; // Max 50% of window width
 
 // =============================================================================
 // MODULE-SCOPE CSS INJECTION (runs immediately when file loads, before React)
@@ -53,7 +57,7 @@ const CUSTOM_HANDLE_CSS = `
   }
 `;
 
-// Store cleanup function
+// Store cleanup function and state
 let resizeCleanup: (() => void) | null = null;
 
 /**
@@ -93,26 +97,33 @@ function setupCustomResizeHandler(): void {
 
   // Resize state
   let isDragging = false;
-  let startX = 0;
-  let startWidth = 0;
 
   const onMouseDown = (e: MouseEvent) => {
     isDragging = true;
-    startX = e.clientX;
-    startWidth = sidebar.getBoundingClientRect().width;
     handle?.classList.add('dragging');
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     e.preventDefault();
+    e.stopImmediatePropagation(); // Prevent Storybook's handler from firing
   };
 
   const onMouseMove = (e: MouseEvent) => {
     if (!isDragging) return;
 
-    // For right sidebar: drag LEFT (negative delta) = LARGER
-    // drag RIGHT (positive delta) = SMALLER
-    const delta = e.clientX - startX;
-    const newWidth = Math.max(200, Math.min(600, startWidth - delta));
+    // For right sidebar: width = distance from mouse to right edge of window
+    // This mirrors Storybook's vanilla behavior (width = e.clientX for left sidebar)
+    const maxWidth = window.innerWidth * SIDEBAR_MAX_WIDTH_RATIO;
+    let newWidth = window.innerWidth - e.clientX;
+
+    // Snap to close when very close to right edge (mirror of Storybook's left-edge snap)
+    if (newWidth <= SNAP_THRESHOLD_PX) {
+      newWidth = 0;
+    } else if (newWidth < SIDEBAR_MIN_WIDTH_PX) {
+      // Apply stiffness near minimum (same feel as Storybook)
+      newWidth = SIDEBAR_MIN_WIDTH_PX;
+    } else if (newWidth > maxWidth) {
+      newWidth = maxWidth;
+    }
 
     // Update grid columns
     const currentColumns = getComputedStyle(root).gridTemplateColumns;
@@ -129,14 +140,6 @@ function setupCustomResizeHandler(): void {
     handle?.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-
-    // Save width preference
-    try {
-      const currentWidth = sidebar.getBoundingClientRect().width;
-      localStorage.setItem(WIDTH_STORAGE_KEY, String(Math.round(currentWidth)));
-    } catch {
-      // Ignore storage errors
-    }
   };
 
   // Use capture phase to ensure we get events before Storybook
@@ -153,24 +156,6 @@ function setupCustomResizeHandler(): void {
     document.getElementById(CUSTOM_HANDLE_STYLE_ID)?.remove();
     root.style.gridTemplateColumns = '';
   };
-
-  // Restore saved width
-  try {
-    const savedWidth = localStorage.getItem(WIDTH_STORAGE_KEY);
-    if (savedWidth) {
-      const width = Number.parseInt(savedWidth, 10);
-      if (width >= 200 && width <= 600) {
-        const currentColumns = getComputedStyle(root).gridTemplateColumns;
-        const parts = currentColumns.split(' ');
-        if (parts.length >= 1) {
-          parts[0] = `${width}px`;
-          root.style.gridTemplateColumns = parts.join(' ');
-        }
-      }
-    }
-  } catch {
-    // Ignore storage errors
-  }
 }
 
 /**
