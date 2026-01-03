@@ -10,15 +10,17 @@ import { ADDON_ID, TOOL_ID, STYLE_ID, STORAGE_KEY } from './constants';
 // =============================================================================
 
 /**
- * CSS that moves sidebar to the right.
- * Uses CSS grid area reordering - no pixel values needed.
+ * CSS that moves sidebar to the right using RTL direction trick.
+ * This reverses the grid column order while preserving Storybook's
+ * internal width handling (resizable sidebar continues to work).
  */
 const SIDEBAR_RIGHT_CSS = `
   @media (min-width: 600px) {
     #root > div[class] {
-      grid-template-areas: 
-        "content sidebar"
-        "panel sidebar" !important;
+      direction: rtl;
+    }
+    #root > div[class] > * {
+      direction: ltr;
     }
   }
 `;
